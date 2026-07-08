@@ -1,5 +1,14 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import express from "express";
+
+// The .env lives at the repo root, but npm runs this workspace with cwd=server/,
+// so resolve the path from this file (server/src/index.ts -> ../../.env) instead
+// of relying on cwd. This is why a key pasted into the root .env is actually read.
+const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+loadEnv({ path: resolve(rootDir, ".env") });
+
 import cors from "cors";
 import { generateRouter } from "./routes/generate";
 import { statusRouter } from "./routes/status";

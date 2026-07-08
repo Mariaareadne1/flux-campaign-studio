@@ -1,6 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { generateRouter } from "./routes/generate";
+import { statusRouter } from "./routes/status";
+import { imageRouter } from "./routes/image";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8787;
@@ -12,10 +15,11 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// API routes are mounted here as the phases progress:
-//   POST /api/generate   -> proxy FLUX submit
-//   GET  /api/status     -> proxy FLUX polling
-//   GET  /api/image      -> proxy-download a FLUX result URL (defeats CORS + expiry)
+// The frontend talks ONLY to these routes; the backend holds the key and is the
+// only thing that talks to FLUX.
+app.use("/api/generate", generateRouter); // POST -> FLUX submit
+app.use("/api/status", statusRouter); // GET  -> FLUX polling
+app.use("/api/image", imageRouter); // GET  -> proxy-download a result URL
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);

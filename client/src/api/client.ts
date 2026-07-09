@@ -4,6 +4,7 @@ import type {
   GenerateRequest,
   GenerateResponse,
   StatusResponse,
+  UploadResponse,
 } from "../../../shared/types";
 
 // The client talks ONLY to our own backend. In dev, Vite proxies /api to the
@@ -46,6 +47,26 @@ export async function getStatus(pollingUrl: string): Promise<StatusResponse> {
 /** Build the proxy URL that serves a FLUX result image (defeats CORS + expiry). */
 export function imageProxyUrl(resultUrl: string): string {
   return `/api/image?url=${encodeURIComponent(resultUrl)}`;
+}
+
+/** Read a browser File into a base64 data URL (for upload). */
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Upload a product image (as a data URL) and get back its stored id + URL. */
+export async function uploadImage(dataUrl: string): Promise<UploadResponse> {
+  const resp = await fetch("/api/upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dataUrl }),
+  });
+  return jsonOrThrow<UploadResponse>(resp);
 }
 
 const POLL_INTERVAL_MS = 700;

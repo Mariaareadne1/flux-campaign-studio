@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, type ChangeEvent } from "react";
+import { fileToDataUrl, uploadImage } from "../api/client";
 import { useAppDispatch, useAppState } from "../state/store";
 
 export function GoalInput() {
@@ -6,8 +7,28 @@ export function GoalInput() {
   const dispatch = useAppDispatch();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Upload wiring lands in Task 3; run wiring in Task 4.
-  function onFile() {}
+  async function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    dispatch({ type: "SET_ERROR", error: null });
+    dispatch({ type: "SET_BUSY", busy: true });
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const uploaded = await uploadImage(dataUrl);
+      dispatch({ type: "SET_UPLOAD", upload: uploaded });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      dispatch({ type: "SET_BUSY", busy: false });
+    }
+  }
+
+  // Run wiring lands in Task 4.
   function onRun() {}
 
   const running = job?.status === "running";

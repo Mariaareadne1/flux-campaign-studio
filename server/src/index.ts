@@ -13,6 +13,8 @@ import cors from "cors";
 import { generateRouter } from "./routes/generate";
 import { statusRouter } from "./routes/status";
 import { imageRouter } from "./routes/image";
+import { uploadRouter } from "./routes/upload";
+import { ensureUploadsDir, UPLOADS_DIR } from "./storage";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8787;
@@ -29,6 +31,12 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/generate", generateRouter); // POST -> FLUX submit
 app.use("/api/status", statusRouter); // GET  -> FLUX polling
 app.use("/api/image", imageRouter); // GET  -> proxy-download a result URL
+app.use("/api/upload", uploadRouter); // POST -> store a product image
+
+// Serve stored images (uploads + persisted results). express.static guards
+// against path traversal.
+ensureUploadsDir();
+app.use("/api/uploads", express.static(UPLOADS_DIR));
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);

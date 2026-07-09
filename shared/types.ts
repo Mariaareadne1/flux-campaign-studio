@@ -88,6 +88,10 @@ export interface PlanStep {
   height?: number;
   /** Rough estimated cost of this step in USD (cost-aware orchestration). */
   estCostUsd?: number;
+  /** Which attempt is in progress (1-based); >1 means the step was retried. */
+  attempt?: number;
+  /** Transient human-readable note, e.g. a retry reason while running. */
+  note?: string;
   /** Error message when status is "failed". */
   error?: string;
 }

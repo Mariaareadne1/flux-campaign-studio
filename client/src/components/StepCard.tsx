@@ -70,6 +70,12 @@ export function StepCard({ step, active }: { step: PlanStep; active: boolean }) 
         </span>
       </div>
 
+      {step.status === "running" && step.note && (
+        <p className="mt-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+          {step.note}
+        </p>
+      )}
+
       {step.status === "failed" && step.error && (
         <p className="mt-1.5 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-600">
           {step.error}

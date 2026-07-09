@@ -5,7 +5,13 @@ import {
   pollUntilReady,
   submitGeneration,
 } from "../flux/client";
+import { FluxError, isRetryable, normalizeError } from "../flux/errors";
 import { readAsDataUrl, saveImageBytes } from "../storage";
+
+/** How many times to retry a failed/rejected step (in addition to the first try). */
+const MAX_RETRIES = 2;
+/** A real image is far larger than this; a tiny payload signals a bad result. */
+const MIN_RESULT_BYTES = 1024;
 
 /**
  * Phase 1 executor: runs a HARDCODED 4-step campaign chain against the real
@@ -120,37 +126,100 @@ async function runJob(apiKey: string, job: Job): Promise<void> {
       continue;
     }
 
+    try {
+      await runStep(apiKey, step, job);
+    } catch (err) {
+      const message = normalizeError(err).message;
+      step.status = "failed";
+      step.error = message;
+      step.note = undefined;
+      job.status = "failed";
+      job.error = `Step "${step.label}" failed: ${message}`;
+      return; // stop the chain on unrecoverable failure
+    }
+  }
+
+  job.status = "done";
+}
+
+/**
+ * Run a single step with evaluation + bounded retry. On a retryable failure or
+ * a rejected result, it retries with an adjusted prompt (up to MAX_RETRIES).
+ * Non-retryable failures (bad key, content policy, validation) fail fast.
+ * State is mutated in place so the run route reflects progress live.
+ */
+async function runStep(apiKey: string, step: PlanStep, job: Job): Promise<void> {
+  const basePrompt = step.prompt;
+  let lastReason = "";
+
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     step.status = "running";
+    step.attempt = attempt;
+    step.note =
+      attempt > 1 ? `retry ${attempt - 1}/${MAX_RETRIES}: ${lastReason}` : undefined;
+
+    const prompt =
+      attempt === 1 ? basePrompt : adjustPromptForRetry(basePrompt, attempt);
+
     try {
       const inputImage = resolveInputDataUrl(step, job);
       const submitted = await submitGeneration(apiKey, {
         model: step.model,
-        prompt: step.prompt,
+        prompt,
         width: step.width,
         height: step.height,
         inputImage,
       });
       const result = await pollUntilReady(apiKey, submitted.pollingUrl);
       if (!result.resultUrl) {
-        throw new Error("FLUX reported Ready but returned no image.");
+        throw new FluxError("FLUX reported Ready but returned no image.", 502);
       }
 
       // Download + persist immediately so the result survives URL expiry.
       const { bytes, contentType } = await downloadImage(result.resultUrl);
+
+      const verdict = evaluateResult(bytes);
+      if (!verdict.ok) {
+        // A rejected result is retryable (adjust the prompt and try again).
+        lastReason = verdict.reason;
+        if (attempt <= MAX_RETRIES) continue;
+        throw new FluxError(`Result rejected: ${verdict.reason}`, 502);
+      }
+
       const saved = saveImageBytes(bytes, contentType);
       step.resultUrl = saved.url;
       step.status = "done";
+      step.note = undefined;
+      return;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      step.status = "failed";
-      step.error = message;
-      job.status = "failed";
-      job.error = `Step "${step.label}" failed: ${message}`;
-      return; // stop the chain (Phase 2 adds bounded retry instead)
+      const fe = normalizeError(err);
+      lastReason = fe.message;
+      // Retry only if attempts remain AND the error is worth retrying.
+      if (attempt <= MAX_RETRIES && isRetryable(fe)) continue;
+      throw fe;
     }
   }
+}
 
-  job.status = "done";
+/**
+ * Evaluate a generated result. Simple to start: the image must be present and
+ * plausibly sized. This is the hook where a stronger check (aspect-ratio
+ * validation, or a model-based critique of the image) can plug in later.
+ */
+function evaluateResult(bytes: Buffer): { ok: true } | { ok: false; reason: string } {
+  if (!bytes || bytes.length < MIN_RESULT_BYTES) {
+    return { ok: false, reason: "result image was empty or too small" };
+  }
+  return { ok: true };
+}
+
+/** Nudge the prompt toward a cleaner result on retry. */
+function adjustPromptForRetry(basePrompt: string, attempt: number): string {
+  const nudge =
+    attempt === 2
+      ? " Ensure the product is clearly visible, sharply focused, and well lit."
+      : " Render a clean, high-quality, correctly composed image with the product prominent.";
+  return basePrompt + nudge;
 }
 
 /**

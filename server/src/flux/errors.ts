@@ -55,3 +55,15 @@ export function assertBflUrl(raw: string, label = "url"): void {
     throw new FluxError(`'${label}' must be a bfl.ai URL.`, 400);
   }
 }
+
+/**
+ * Whether an error is worth retrying, following the bfl-api skill's guidance:
+ * retry rate limits, timeouts, and 5xx; do NOT retry auth/payment/validation
+ * (4xx) — e.g. a bad key or a content-policy rejection won't fix itself.
+ */
+export function isRetryable(err: unknown): boolean {
+  const status = err instanceof FluxError ? err.status : 502;
+  if (status === 429) return true; // rate limited
+  if (status >= 500) return true; // server / timeout / network
+  return false; // 400/401/402/403/404 — non-retryable
+}

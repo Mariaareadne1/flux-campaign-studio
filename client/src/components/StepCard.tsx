@@ -32,6 +32,7 @@ export function StepCard({ step, active }: { step: PlanStep; active: boolean }) 
   const status = STATUS_STYLES[step.status];
   return (
     <div
+      data-step-id={step.id}
       className={`rounded-lg border bg-white p-3 transition ${
         active ? "border-neutral-900 shadow-sm" : "border-neutral-200"
       }`}
@@ -65,7 +66,12 @@ export function StepCard({ step, active }: { step: PlanStep; active: boolean }) 
             </span>
           )}
         </div>
-        <span className={`text-[11px] font-medium capitalize ${status.text}`}>
+        <span
+          className={`flex items-center gap-1 text-[11px] font-medium capitalize ${status.text}`}
+        >
+          {step.status === "running" && (
+            <span className="h-3 w-3 animate-spin rounded-full border border-blue-300 border-t-blue-600" />
+          )}
           {step.status}
         </span>
       </div>

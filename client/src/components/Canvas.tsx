@@ -16,7 +16,10 @@ export function Canvas() {
     <main className="flex flex-1 flex-col overflow-hidden bg-white">
       <div className="flex flex-1 items-center justify-center overflow-auto p-8">
         {selected?.resultUrl ? (
-          <figure className="flex max-h-full flex-col items-center gap-3">
+          <figure
+            key={selected.id}
+            className="animate-fade-in flex max-h-full flex-col items-center gap-3"
+          >
             <img
               src={selected.resultUrl}
               alt={selected.label}
@@ -29,7 +32,10 @@ export function Canvas() {
         ) : runningStep ? (
           <div className="text-center">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-800" />
-            <p className="text-sm text-neutral-500">{runningStep.label}…</p>
+            <p className="text-sm text-neutral-600">{runningStep.label}…</p>
+            <p className="mt-1 text-xs text-neutral-400">
+              generating with {runningStep.model}
+            </p>
           </div>
         ) : upload ? (
           <figure className="flex flex-col items-center gap-3 opacity-80">
@@ -59,7 +65,7 @@ export function Canvas() {
                 key={step.id}
                 onClick={() => setSelectedId(step.id)}
                 title={step.label}
-                className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border ${
+                className={`animate-fade-in h-16 w-16 shrink-0 overflow-hidden rounded-md border ${
                   isActive ? "border-neutral-900" : "border-neutral-200"
                 }`}
               >

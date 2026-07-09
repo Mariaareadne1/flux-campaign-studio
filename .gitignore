@@ -7,3 +7,4 @@ build/
 *.log
 .DS_Store
 /server/uploads/
+.claude/skills/

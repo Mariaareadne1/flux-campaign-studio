@@ -10,10 +10,19 @@ export function PlanPanel() {
     (s) => s.status === "running" || s.status === "pending",
   )?.id;
 
+  const totalCost = steps.reduce((sum, s) => sum + (s.estCostUsd ?? 0), 0);
+
   return (
     <aside className="flex w-80 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
       <div className="border-b border-neutral-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-neutral-900">Agent plan</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">Agent plan</h2>
+          {totalCost > 0 && (
+            <span className="font-mono text-xs text-neutral-500">
+              ~${totalCost.toFixed(2)}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-neutral-500">
           {job ? "Live step-by-step progress" : "Steps appear here on run"}
         </p>

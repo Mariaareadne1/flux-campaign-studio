@@ -1,10 +1,24 @@
-import type { PlanStep, StepKind, StepStatus } from "../../../shared/types";
+import type {
+  FluxModelId,
+  PlanStep,
+  StepKind,
+  StepStatus,
+} from "../../../shared/types";
 
 const KIND_LABEL: Record<StepKind, string> = {
   generate: "Generate",
   edit: "Edit",
   reframe: "Reframe",
   export: "Export",
+};
+
+// Compact model labels for display (mirrors server/src/flux/models.ts).
+const MODEL_SHORT: Record<FluxModelId, string> = {
+  "flux-2-klein-4b": "klein 4B",
+  "flux-2-klein-9b": "klein 9B",
+  "flux-2-pro": "pro",
+  "flux-2-flex": "flex",
+  "flux-2-max": "max",
 };
 
 const STATUS_STYLES: Record<StepStatus, { dot: string; text: string }> = {
@@ -39,9 +53,18 @@ export function StepCard({ step, active }: { step: PlanStep; active: boolean }) 
       </p>
 
       <div className="mt-2 flex items-center justify-between">
-        <span className="font-mono text-[10px] text-neutral-400">
-          {step.model}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {step.kind !== "export" && (
+            <span className="rounded bg-neutral-900/5 px-1.5 py-0.5 font-mono text-[10px] text-neutral-600">
+              {MODEL_SHORT[step.model]}
+            </span>
+          )}
+          {step.estCostUsd !== undefined && (
+            <span className="font-mono text-[10px] text-neutral-400">
+              ~${step.estCostUsd.toFixed(3)}
+            </span>
+          )}
+        </div>
         <span className={`text-[11px] font-medium capitalize ${status.text}`}>
           {step.status}
         </span>

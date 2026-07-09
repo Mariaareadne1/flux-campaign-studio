@@ -5,6 +5,7 @@ import type {
   PlanStep,
   StepKind,
 } from "../../../shared/types";
+import { estimateCostUsd } from "../flux/models";
 
 /**
  * The campaign planner. Given a natural-language goal + an uploaded product
@@ -186,5 +187,30 @@ export function planCampaign(
     prompt: "Collect all generated campaign assets for export.",
   });
 
+  attachCostEstimates(steps);
+
   return { id: randomUUID(), goal, inputImageRef: uploadedImageId, steps };
+}
+
+/**
+ * Annotate each image-producing step with a rough cost estimate. Our steps all
+ * edit an input image (I2I), so the input's megapixels matter: we use the source
+ * step's dimensions when chained, or ~1 MP for the uploaded product photo.
+ */
+function attachCostEstimates(steps: PlanStep[]): void {
+  const byId = new Map(steps.map((s) => [s.id, s]));
+  for (const step of steps) {
+    if (step.kind === "export" || !step.width || !step.height) continue;
+    const source = step.inputImageRef ? byId.get(step.inputImageRef) : undefined;
+    const inputMp =
+      source?.width && source?.height
+        ? (source.width * source.height) / 1_000_000
+        : 1.0; // uploaded product image — assume ~1 MP
+    step.estCostUsd = estimateCostUsd(
+      step.model,
+      step.width,
+      step.height,
+      inputMp,
+    );
+  }
 }

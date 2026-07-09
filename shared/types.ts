@@ -86,6 +86,8 @@ export interface PlanStep {
   /** Target dimensions (used for reframe/aspect-ratio steps). */
   width?: number;
   height?: number;
+  /** Rough estimated cost of this step in USD (cost-aware orchestration). */
+  estCostUsd?: number;
   /** Error message when status is "failed". */
   error?: string;
 }

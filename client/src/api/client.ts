@@ -87,25 +87,50 @@ export async function getRun(runId: string): Promise<Job> {
   return jsonOrThrow<Job>(resp);
 }
 
-const RUN_POLL_INTERVAL_MS = 800;
-const MAX_RUN_POLLS = 900; // ~12 minutes
-
 /**
- * Poll a run every ~0.8s, reporting each snapshot, until it's no longer
- * running. This drives the live PlanPanel/Canvas updates in Phase 1; Phase 2
- * replaces it with a Server-Sent Events stream.
+ * Stream a run's live progress via Server-Sent Events, reporting every snapshot
+ * until the run reaches a terminal state. Resolves with the final Job.
  */
-export async function pollRun(
+export function streamRun(
   runId: string,
   onUpdate: (job: Job) => void,
 ): Promise<Job> {
-  for (let i = 0; i < MAX_RUN_POLLS; i++) {
-    const job = await getRun(runId);
-    onUpdate(job);
-    if (job.status !== "running") return job;
-    await new Promise((r) => setTimeout(r, RUN_POLL_INTERVAL_MS));
-  }
-  throw new Error("Run timed out.");
+  return new Promise((resolve, reject) => {
+    const source = new EventSource(
+      `/api/run/${encodeURIComponent(runId)}/stream`,
+    );
+    let latest: Job | null = null;
+    let settled = false;
+
+    const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      source.close();
+      fn();
+    };
+
+    source.onmessage = (event) => {
+      let job: Job;
+      try {
+        job = JSON.parse(event.data) as Job;
+      } catch {
+        return; // ignore heartbeats / non-JSON frames
+      }
+      latest = job;
+      onUpdate(job);
+      if (job.status !== "running") done(() => resolve(job));
+    };
+
+    source.onerror = () => {
+      // The server closes the stream when the run ends; if we already have a
+      // terminal snapshot, treat it as success, otherwise surface the drop.
+      if (latest && latest.status !== "running") {
+        done(() => resolve(latest as Job));
+      } else {
+        done(() => reject(new Error("Lost connection to the run stream.")));
+      }
+    };
+  });
 }
 
 const POLL_INTERVAL_MS = 700;

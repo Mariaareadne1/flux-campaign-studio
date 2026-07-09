@@ -1,8 +1,8 @@
 import { useRef, type ChangeEvent } from "react";
 import {
   fileToDataUrl,
-  pollRun,
   startRun,
+  streamRun,
   uploadImage,
 } from "../api/client";
 import { useAppDispatch, useAppState } from "../state/store";
@@ -43,7 +43,7 @@ export function GoalInput() {
         goal: goal.trim(),
       });
       dispatch({ type: "SET_JOB", job: started });
-      const final = await pollRun(started.id, (job) =>
+      const final = await streamRun(started.id, (job) =>
         dispatch({ type: "SET_JOB", job }),
       );
       if (final.status === "failed") {

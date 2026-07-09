@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import type { CampaignPlan, Job, PlanStep } from "../../../shared/types";
 import {
   downloadImage,
@@ -26,6 +27,27 @@ const MIN_RESULT_BYTES = 1024;
  */
 
 const runs = new Map<string, Job>();
+
+/**
+ * Emits a snapshot of a job (keyed by runId) after every state change, so the
+ * SSE route can push live progress. Max listeners is unbounded because many
+ * clients could stream different runs concurrently.
+ */
+const runEvents = new EventEmitter();
+runEvents.setMaxListeners(0);
+
+function notify(job: Job): void {
+  runEvents.emit(job.id, job);
+}
+
+/** Subscribe to a run's updates; returns an unsubscribe function. */
+export function subscribeToRun(
+  runId: string,
+  listener: (job: Job) => void,
+): () => void {
+  runEvents.on(runId, listener);
+  return () => runEvents.off(runId, listener);
+}
 
 /** Build the fixed generate -> edit -> reframe(x2) -> export chain. */
 export function buildHardcodedPlan(
@@ -123,6 +145,7 @@ async function runJob(apiKey: string, job: Job): Promise<void> {
   for (const step of job.plan.steps) {
     if (step.kind === "export") {
       step.status = "done";
+      notify(job);
       continue;
     }
 
@@ -135,11 +158,13 @@ async function runJob(apiKey: string, job: Job): Promise<void> {
       step.note = undefined;
       job.status = "failed";
       job.error = `Step "${step.label}" failed: ${message}`;
+      notify(job);
       return; // stop the chain on unrecoverable failure
     }
   }
 
   job.status = "done";
+  notify(job);
 }
 
 /**
@@ -157,6 +182,7 @@ async function runStep(apiKey: string, step: PlanStep, job: Job): Promise<void> 
     step.attempt = attempt;
     step.note =
       attempt > 1 ? `retry ${attempt - 1}/${MAX_RETRIES}: ${lastReason}` : undefined;
+    notify(job);
 
     const prompt =
       attempt === 1 ? basePrompt : adjustPromptForRetry(basePrompt, attempt);
@@ -190,6 +216,7 @@ async function runStep(apiKey: string, step: PlanStep, job: Job): Promise<void> 
       step.resultUrl = saved.url;
       step.status = "done";
       step.note = undefined;
+      notify(job);
       return;
     } catch (err) {
       const fe = normalizeError(err);

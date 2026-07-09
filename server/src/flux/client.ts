@@ -1,4 +1,5 @@
 import type { FluxModelId, FluxStatus } from "../../../shared/types";
+import { CONFIG } from "../config";
 import { endpointFor } from "./models";
 import { assertBflUrl, FluxError } from "./errors";
 
@@ -14,13 +15,12 @@ import { assertBflUrl, FluxError } from "./errors";
  * All FLUX auth uses the `x-key` header.
  */
 
-const POLL_INTERVAL_MS = 500;
-const DEFAULT_TIMEOUT_MS = 120_000;
-
-// Per-request network timeouts so a hung connection can never stall a run.
-const SUBMIT_TIMEOUT_MS = 30_000;
-const POLL_TIMEOUT_MS = 30_000;
-const DOWNLOAD_TIMEOUT_MS = 60_000;
+// Polling cadence + per-request network timeouts (see ../config.ts).
+const POLL_INTERVAL_MS = CONFIG.timeouts.pollIntervalMs;
+const DEFAULT_TIMEOUT_MS = CONFIG.timeouts.pollTotalMs;
+const SUBMIT_TIMEOUT_MS = CONFIG.timeouts.submitMs;
+const POLL_TIMEOUT_MS = CONFIG.timeouts.statusMs;
+const DOWNLOAD_TIMEOUT_MS = CONFIG.timeouts.downloadMs;
 
 /** fetch with a hard timeout, normalizing network/timeout failures to FluxError. */
 async function fetchWithTimeout(

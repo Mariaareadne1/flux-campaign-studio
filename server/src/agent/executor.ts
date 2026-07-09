@@ -7,16 +7,17 @@ import {
   submitGeneration,
 } from "../flux/client";
 import { FluxError, isRetryable, normalizeError } from "../flux/errors";
+import { CONFIG } from "../config";
 import { readAsDataUrl, saveImageBytes } from "../storage";
 import { planCampaign } from "./planner";
 
 /** How many times to retry a failed/rejected step (in addition to the first try). */
-const MAX_RETRIES = 2;
+const MAX_RETRIES = CONFIG.retry.maxRetries;
 /** A real image is far larger than this; a tiny payload signals a bad result. */
 const MIN_RESULT_BYTES = 1024;
 /** Exponential backoff bounds between retries. */
-const RETRY_BASE_MS = 800;
-const RETRY_MAX_MS = 8_000;
+const RETRY_BASE_MS = CONFIG.retry.baseMs;
+const RETRY_MAX_MS = CONFIG.retry.maxMs;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -2,10 +2,9 @@ import { randomUUID } from "node:crypto";
 import type {
   CampaignPlan,
   CampaignType,
-  FluxModelId,
   PlanStep,
-  StepKind,
 } from "../../../shared/types";
+import { CONFIG } from "../config";
 import { estimateCostUsd } from "../flux/models";
 import {
   conceptPrompt,
@@ -25,8 +24,7 @@ import {
  * plan is just data the UI renders, and every decision here is inspectable. A
  * fork can make it smarter without changing the executor or the UI contract.
  *
- * NOTE: prompt text is constructed inline for now; Task 3 moves it into
- * prompts.ts following the flux-best-practices skill.
+ * Models, sizes, retry, and timeouts all live in ../config.ts (CONFIG).
  */
 
 /** An output format the campaign can target. Dimensions are multiples of 16. */
@@ -38,25 +36,10 @@ interface FormatSpec {
 }
 
 const FORMATS = {
-  banner: { key: "16x9", label: "16:9 banner", width: 1280, height: 720 },
-  square: { key: "1x1", label: "1:1 square", width: 1024, height: 1024 },
-  story: { key: "9x16", label: "9:16 story", width: 720, height: 1280 },
+  banner: { key: "16x9", label: "16:9 banner", ...CONFIG.sizes.banner },
+  square: { key: "1x1", label: "1:1 square", ...CONFIG.sizes.square },
+  story: { key: "9x16", label: "9:16 story", ...CONFIG.sizes.story },
 } satisfies Record<string, FormatSpec>;
-
-/**
- * Per-step model policy (cost-aware — see Task 2). Rationale:
- *  - hero → [max]: the one image that must be perfect.
- *  - lifestyle → [pro]: a fresh scene composition; balanced quality/speed.
- *  - reframe → [klein-9b]: mechanical reformat of an already-approved image, so
- *    the cheap/fast tier is appropriate.
- *  - concept → [klein-4b]: a quick, throwaway composition preview.
- */
-function selectModel(kind: StepKind, role: "concept" | "hero" | "other"): FluxModelId {
-  if (kind === "reframe") return "flux-2-klein-9b";
-  if (role === "concept") return "flux-2-klein-4b";
-  if (role === "hero") return "flux-2-max";
-  return "flux-2-pro"; // lifestyle / edits
-}
 
 /** Detect which output formats the goal asks for (defaults to banner + square). */
 function detectFormats(goal: string): FormatSpec[] {
@@ -156,33 +139,33 @@ function planLaunch(goal: string, uploadedImageId: string): CampaignPlan {
       id: "concept",
       label: "Concept draft",
       kind: "generate",
-      model: selectModel("generate", "concept"),
+      model: CONFIG.models.concept,
       status: "pending",
       inputImageRef: uploadedImageId,
-      width: 1024,
-      height: 1024,
+      width: CONFIG.sizes.base.width,
+      height: CONFIG.sizes.base.height,
       prompt: conceptPrompt(ctx),
     },
     {
       id: "hero",
       label: "Hero shot",
       kind: "generate",
-      model: selectModel("generate", "hero"),
+      model: CONFIG.models.hero,
       status: "pending",
       inputImageRef: uploadedImageId,
-      width: 1024,
-      height: 1024,
+      width: CONFIG.sizes.base.width,
+      height: CONFIG.sizes.base.height,
       prompt: heroPrompt(ctx),
     },
     {
       id: "lifestyle",
       label: "Lifestyle scene",
       kind: "edit",
-      model: selectModel("edit", "other"),
+      model: CONFIG.models.lifestyle,
       status: "pending",
       inputImageRef: "hero",
-      width: 1024,
-      height: 1024,
+      width: CONFIG.sizes.base.width,
+      height: CONFIG.sizes.base.height,
       prompt: lifestylePrompt(ctx),
     },
   ];
@@ -192,7 +175,7 @@ function planLaunch(goal: string, uploadedImageId: string): CampaignPlan {
       id: `reframe-${format.key}`,
       label: format.label,
       kind: "reframe",
-      model: selectModel("reframe", "other"),
+      model: CONFIG.models.reframe,
       status: "pending",
       inputImageRef: "lifestyle",
       width: format.width,
@@ -217,11 +200,11 @@ function planSocialPack(goal: string, uploadedImageId: string): CampaignPlan {
       id: "hero",
       label: "Hero shot",
       kind: "generate",
-      model: selectModel("generate", "hero"),
+      model: CONFIG.models.hero,
       status: "pending",
       inputImageRef: uploadedImageId,
-      width: 1024,
-      height: 1024,
+      width: CONFIG.sizes.base.width,
+      height: CONFIG.sizes.base.height,
       prompt: heroPrompt(ctx),
     },
   ];
@@ -232,7 +215,7 @@ function planSocialPack(goal: string, uploadedImageId: string): CampaignPlan {
       id: `social-${format.key}`,
       label: `${format.label} + text`,
       kind: "edit",
-      model: "flux-2-flex", // best typography rendering
+      model: CONFIG.models.social,
       status: "pending",
       inputImageRef: "hero",
       width: format.width,

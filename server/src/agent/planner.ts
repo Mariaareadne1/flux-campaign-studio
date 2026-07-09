@@ -6,6 +6,13 @@ import type {
   StepKind,
 } from "../../../shared/types";
 import { estimateCostUsd } from "../flux/models";
+import {
+  conceptPrompt,
+  heroPrompt,
+  lifestylePrompt,
+  reframePrompt,
+  type PromptContext,
+} from "./prompts";
 
 /**
  * The campaign planner. Given a natural-language goal + an uploaded product
@@ -80,41 +87,11 @@ function deriveStyle(goal: string): string {
   return hints.length > 0 ? hints.join(", ") : "clean, premium, minimal";
 }
 
-// --- Inline prompt construction (replaced by prompts.ts in Task 3) -----------
-
-function heroPrompt(style: string): string {
-  return (
-    `Studio product photograph of the product from image 1, centered on a ` +
-    `seamless off-white background (#f5f5f4), soft even lighting with a subtle ` +
-    `contact shadow, crisp focus and high detail. Style: ${style}. A clean ` +
-    `e-commerce hero shot.`
-  );
+/** Pull an explicit #RRGGBB brand color out of the goal, if present. */
+function extractBrandColor(goal: string): string | undefined {
+  const match = /#[0-9a-fA-F]{6}\b/.exec(goal);
+  return match ? match[0] : undefined;
 }
-
-function conceptPrompt(style: string): string {
-  return (
-    `Quick concept preview: the product from image 1 on a plain light ` +
-    `background, simple studio lighting. Style: ${style}.`
-  );
-}
-
-function lifestylePrompt(style: string): string {
-  return (
-    `Place the product from image 1 into a warm, minimal lifestyle scene on a ` +
-    `light wooden surface beside a window, soft natural morning light, shallow ` +
-    `depth of field, a few tasteful props, photorealistic. Style: ${style}.`
-  );
-}
-
-function reframePrompt(format: FormatSpec): string {
-  return (
-    `Reframe the scene from image 1 to a ${format.label} composition, extending ` +
-    `the background naturally to fill the new aspect ratio while keeping the ` +
-    `product centered and unchanged.`
-  );
-}
-
-// -----------------------------------------------------------------------------
 
 /**
  * Build a launch-campaign plan: concept draft -> hero -> lifestyle -> one
@@ -124,7 +101,10 @@ export function planCampaign(
   goal: string,
   uploadedImageId: string,
 ): CampaignPlan {
-  const style = deriveStyle(goal);
+  const ctx: PromptContext = {
+    style: deriveStyle(goal),
+    brandColor: extractBrandColor(goal),
+  };
   const formats = detectFormats(goal);
   const steps: PlanStep[] = [];
 
@@ -137,7 +117,7 @@ export function planCampaign(
     inputImageRef: uploadedImageId,
     width: 1024,
     height: 1024,
-    prompt: conceptPrompt(style),
+    prompt: conceptPrompt(ctx),
   });
 
   steps.push({
@@ -149,7 +129,7 @@ export function planCampaign(
     inputImageRef: uploadedImageId,
     width: 1024,
     height: 1024,
-    prompt: heroPrompt(style),
+    prompt: heroPrompt(ctx),
   });
 
   steps.push({
@@ -161,7 +141,7 @@ export function planCampaign(
     inputImageRef: "hero",
     width: 1024,
     height: 1024,
-    prompt: lifestylePrompt(style),
+    prompt: lifestylePrompt(ctx),
   });
 
   for (const format of formats) {
@@ -174,7 +154,7 @@ export function planCampaign(
       inputImageRef: "lifestyle",
       width: format.width,
       height: format.height,
-      prompt: reframePrompt(format),
+      prompt: reframePrompt(format.label),
     });
   }
 

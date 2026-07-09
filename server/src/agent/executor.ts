@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import type { CampaignPlan, Job, PlanStep } from "../../../shared/types";
+import type { Job, PlanStep } from "../../../shared/types";
 import {
   downloadImage,
   pollUntilReady,
@@ -8,6 +8,7 @@ import {
 } from "../flux/client";
 import { FluxError, isRetryable, normalizeError } from "../flux/errors";
 import { readAsDataUrl, saveImageBytes } from "../storage";
+import { planCampaign } from "./planner";
 
 /** How many times to retry a failed/rejected step (in addition to the first try). */
 const MAX_RETRIES = 2;
@@ -49,87 +50,16 @@ export function subscribeToRun(
   return () => runEvents.off(runId, listener);
 }
 
-/** Build the fixed generate -> edit -> reframe(x2) -> export chain. */
-export function buildHardcodedPlan(
-  uploadedImageId: string,
-  goal: string,
-): CampaignPlan {
-  const steps: PlanStep[] = [
-    {
-      id: "hero",
-      label: "Hero shot",
-      kind: "generate",
-      model: "flux-2-pro",
-      status: "pending",
-      inputImageRef: uploadedImageId,
-      width: 1024,
-      height: 1024,
-      prompt:
-        "Studio product photograph of the product from image 1, centered on a " +
-        "seamless off-white background (#f5f5f4), soft even lighting, a subtle " +
-        "contact shadow, crisp focus and high detail — a clean e-commerce hero shot.",
-    },
-    {
-      id: "lifestyle",
-      label: "Lifestyle scene",
-      kind: "edit",
-      model: "flux-2-pro",
-      status: "pending",
-      inputImageRef: "hero",
-      width: 1024,
-      height: 1024,
-      prompt:
-        "Place the product from image 1 into a warm, minimal lifestyle scene on " +
-        "a light wooden surface beside a window, soft natural morning light, " +
-        "shallow depth of field, a few tasteful props, photorealistic.",
-    },
-    {
-      id: "reframe-16x9",
-      label: "16:9 banner",
-      kind: "reframe",
-      model: "flux-2-pro",
-      status: "pending",
-      inputImageRef: "lifestyle",
-      width: 1440,
-      height: 810,
-      prompt:
-        "Reframe the scene from image 1 to a 16:9 horizontal banner, extending " +
-        "the background naturally on both sides while keeping the product " +
-        "centered and unchanged.",
-    },
-    {
-      id: "reframe-1x1",
-      label: "1:1 square",
-      kind: "reframe",
-      model: "flux-2-pro",
-      status: "pending",
-      inputImageRef: "lifestyle",
-      width: 1080,
-      height: 1080,
-      prompt:
-        "Reframe the scene from image 1 to a balanced 1:1 square format, keeping " +
-        "the product centered and the composition clean.",
-    },
-    {
-      id: "export",
-      label: "Collect assets",
-      kind: "export",
-      model: "flux-2-pro",
-      status: "pending",
-      prompt: "Collect all generated campaign assets for export.",
-    },
-  ];
-
-  return { id: randomUUID(), goal, inputImageRef: uploadedImageId, steps };
-}
-
-/** Create a job, kick off execution (fire-and-forget), and return it. */
+/**
+ * Create a job from a goal + product image (the agent planner builds the plan),
+ * kick off execution (fire-and-forget), and return the initial job.
+ */
 export function startCampaign(
   apiKey: string,
   uploadedImageId: string,
   goal: string,
 ): Job {
-  const plan = buildHardcodedPlan(uploadedImageId, goal);
+  const plan = planCampaign(goal, uploadedImageId);
   const job: Job = { id: randomUUID(), status: "running", plan };
   runs.set(job.id, job);
   void runJob(apiKey, job);

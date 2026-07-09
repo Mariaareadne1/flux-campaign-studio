@@ -17,6 +17,39 @@ import { assertBflUrl, FluxError } from "./errors";
 const POLL_INTERVAL_MS = 500;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+// Per-request network timeouts so a hung connection can never stall a run.
+const SUBMIT_TIMEOUT_MS = 30_000;
+const POLL_TIMEOUT_MS = 30_000;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/** fetch with a hard timeout, normalizing network/timeout failures to FluxError. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new FluxError("Request to FLUX timed out.", 504);
+    }
+    throw new FluxError("Failed to reach FLUX.", 502, String(err));
+  }
+}
+
+/** Build a FluxError from a non-2xx response, capturing Retry-After on 429s. */
+function httpError(resp: Response, prefix: string, detail?: string): FluxError {
+  const err = new FluxError(`${prefix} (${resp.status}).`, resp.status, detail);
+  if (resp.status === 429) {
+    const retryAfter = Number(resp.headers.get("retry-after"));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) {
+      err.retryAfterMs = retryAfter * 1000;
+    }
+  }
+  return err;
+}
+
 export interface SubmitParams {
   model: FluxModelId;
   prompt: string;
@@ -48,20 +81,18 @@ export async function submitGeneration(
   if (params.height) body.height = params.height;
   if (params.inputImage) body.input_image = params.inputImage;
 
-  let resp: Response;
-  try {
-    resp = await fetch(endpointFor(params.model), {
+  const resp = await fetchWithTimeout(
+    endpointFor(params.model),
+    {
       method: "POST",
       headers: { "content-type": "application/json", "x-key": apiKey },
       body: JSON.stringify(body),
-    });
-  } catch (err) {
-    throw new FluxError("Failed to reach FLUX.", 502, String(err));
-  }
+    },
+    SUBMIT_TIMEOUT_MS,
+  );
 
   if (!resp.ok) {
-    const detail = await safeText(resp);
-    throw new FluxError(`FLUX submit failed (${resp.status}).`, resp.status, detail);
+    throw httpError(resp, "FLUX submit failed", await safeText(resp));
   }
 
   const data = (await resp.json()) as { id?: string; polling_url?: string };
@@ -78,18 +109,14 @@ export async function pollOnce(
 ): Promise<PollResult> {
   assertBflUrl(pollingUrl, "pollingUrl");
 
-  let resp: Response;
-  try {
-    resp = await fetch(pollingUrl, {
-      headers: { "x-key": apiKey, accept: "application/json" },
-    });
-  } catch (err) {
-    throw new FluxError("Failed to reach FLUX.", 502, String(err));
-  }
+  const resp = await fetchWithTimeout(
+    pollingUrl,
+    { headers: { "x-key": apiKey, accept: "application/json" } },
+    POLL_TIMEOUT_MS,
+  );
 
   if (!resp.ok) {
-    const detail = await safeText(resp);
-    throw new FluxError(`FLUX poll failed (${resp.status}).`, resp.status, detail);
+    throw httpError(resp, "FLUX poll failed", await safeText(resp));
   }
 
   const data = (await resp.json()) as {
@@ -143,15 +170,15 @@ export async function downloadImage(
 ): Promise<{ contentType: string; bytes: Buffer }> {
   assertBflUrl(url, "url");
 
-  let resp: Response;
-  try {
-    resp = await fetch(url);
-  } catch (err) {
-    throw new FluxError("Failed to download image.", 502, String(err));
-  }
+  const resp = await fetchWithTimeout(url, {}, DOWNLOAD_TIMEOUT_MS);
 
   if (!resp.ok) {
-    throw new FluxError(`Image download failed (${resp.status}).`, resp.status);
+    // 403/404/410 on a result URL almost always means it expired (10-min TTL).
+    const expired = [403, 404, 410].includes(resp.status);
+    const message = expired
+      ? `Result URL expired or unavailable (${resp.status}) — results must be downloaded within ~10 minutes.`
+      : `Image download failed (${resp.status}).`;
+    throw new FluxError(message, resp.status);
   }
 
   const contentType =

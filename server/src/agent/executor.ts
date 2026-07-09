@@ -14,6 +14,19 @@ import { planCampaign } from "./planner";
 const MAX_RETRIES = 2;
 /** A real image is far larger than this; a tiny payload signals a bad result. */
 const MIN_RESULT_BYTES = 1024;
+/** Exponential backoff bounds between retries. */
+const RETRY_BASE_MS = 800;
+const RETRY_MAX_MS = 8_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Delay before a retry: honor a rate-limit Retry-After, else exponential backoff. */
+function retryDelayMs(attempt: number, retryAfterMs?: number): number {
+  if (retryAfterMs && retryAfterMs > 0) return retryAfterMs;
+  return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (attempt - 1));
+}
 
 /**
  * Phase 1 executor: runs a HARDCODED 4-step campaign chain against the real
@@ -138,7 +151,10 @@ async function runStep(apiKey: string, step: PlanStep, job: Job): Promise<void> 
       if (!verdict.ok) {
         // A rejected result is retryable (adjust the prompt and try again).
         lastReason = verdict.reason;
-        if (attempt <= MAX_RETRIES) continue;
+        if (attempt <= MAX_RETRIES) {
+          await sleep(retryDelayMs(attempt));
+          continue;
+        }
         throw new FluxError(`Result rejected: ${verdict.reason}`, 502);
       }
 
@@ -152,7 +168,10 @@ async function runStep(apiKey: string, step: PlanStep, job: Job): Promise<void> 
       const fe = normalizeError(err);
       lastReason = fe.message;
       // Retry only if attempts remain AND the error is worth retrying.
-      if (attempt <= MAX_RETRIES && isRetryable(fe)) continue;
+      if (attempt <= MAX_RETRIES && isRetryable(fe)) {
+        await sleep(retryDelayMs(attempt, fe.retryAfterMs));
+        continue;
+      }
       throw fe;
     }
   }

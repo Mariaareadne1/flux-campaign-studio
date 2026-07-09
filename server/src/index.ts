@@ -40,6 +40,44 @@ app.use("/api/run", runRouter); // POST -> start a campaign; GET /:id -> progres
 ensureUploadsDir();
 app.use("/api/uploads", express.static(UPLOADS_DIR));
 
+// Unknown /api routes get JSON, not an HTML page.
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "Not found." });
+});
+
+// Catch-all so a thrown handler returns JSON instead of crashing the request.
+const errorHandler: express.ErrorRequestHandler = (err, _req, res, next) => {
+  if (res.headersSent) return next(err);
+  // Client errors (e.g. body-parser's malformed-JSON SyntaxError) carry a 4xx
+  // status — relay that; everything else is a real server fault.
+  const status =
+    typeof (err as { status?: number }).status === "number" &&
+    (err as { status: number }).status >= 400 &&
+    (err as { status: number }).status < 500
+      ? (err as { status: number }).status
+      : 500;
+  if (status >= 500) console.error("[server] unhandled route error:", err);
+  res.status(status).json({
+    error: status < 500 ? "Bad request." : "Internal server error.",
+  });
+};
+app.use(errorHandler);
+
+// A bug in a background run (fire-and-forget executor) must never take the
+// process down — log and keep serving.
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[server] uncaughtException:", err);
+});
+
+if (!process.env.BFL_API_KEY) {
+  console.warn(
+    "[server] WARNING: BFL_API_KEY is not set. Add it to the root .env before running a campaign.",
+  );
+}
+
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);
 });

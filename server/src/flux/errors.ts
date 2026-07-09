@@ -8,6 +8,8 @@ import type { ApiError } from "../../../shared/types";
 export class FluxError extends Error {
   readonly status: number;
   readonly detail?: string;
+  /** For 429s: how long to wait before retrying, from the Retry-After header. */
+  retryAfterMs?: number;
 
   constructor(message: string, status = 502, detail?: string) {
     super(message);

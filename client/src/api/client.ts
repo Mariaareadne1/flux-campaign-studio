@@ -123,12 +123,24 @@ export function streamRun(
 
     source.onerror = () => {
       // The server closes the stream when the run ends; if we already have a
-      // terminal snapshot, treat it as success, otherwise surface the drop.
+      // terminal snapshot, treat it as success. Otherwise the connection dropped
+      // mid-run — fall back to a one-shot snapshot to recover the final state.
       if (latest && latest.status !== "running") {
         done(() => resolve(latest as Job));
-      } else {
-        done(() => reject(new Error("Lost connection to the run stream.")));
+        return;
       }
+      getRun(runId)
+        .then((job) => {
+          onUpdate(job);
+          if (job.status !== "running") {
+            done(() => resolve(job));
+          } else {
+            done(() => reject(new Error("Lost connection to the run stream.")));
+          }
+        })
+        .catch(() =>
+          done(() => reject(new Error("Lost connection to the run stream."))),
+        );
     };
   });
 }

@@ -23,8 +23,14 @@ runRouter.post("/", (req, res) => {
     return res.status(400).json({ error: "Missing 'inputImageRef'." });
   }
 
-  const job: Job = startCampaign(apiKey, body.inputImageRef, body.goal ?? "");
-  return res.json(job);
+  try {
+    const job: Job = startCampaign(apiKey, body.inputImageRef, body.goal ?? "");
+    return res.json(job);
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ error: "Failed to start campaign.", detail: String(err) });
+  }
 });
 
 runRouter.get("/:id", (req, res) => {

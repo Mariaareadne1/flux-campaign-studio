@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import type { Job, PlanStep } from "../../../shared/types";
+import type { CampaignType, Job, PlanStep } from "../../../shared/types";
 import {
   downloadImage,
   pollUntilReady,
@@ -71,8 +71,9 @@ export function startCampaign(
   apiKey: string,
   uploadedImageId: string,
   goal: string,
+  campaignType?: CampaignType,
 ): Job {
-  const plan = planCampaign(goal, uploadedImageId);
+  const plan = planCampaign(goal, uploadedImageId, campaignType);
   const job: Job = { id: randomUUID(), status: "running", plan };
   runs.set(job.id, job);
   void runJob(apiKey, job);

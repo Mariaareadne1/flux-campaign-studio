@@ -116,8 +116,12 @@ export interface Job {
   error?: string;
 }
 
+/** The available campaign workflows the planner can build. */
+export type CampaignType = "launch" | "social";
+
 /** Body for POST /api/run — start a campaign run for an uploaded image. */
 export interface RunRequest {
   inputImageRef: string;
   goal?: string;
+  campaignType?: CampaignType;
 }

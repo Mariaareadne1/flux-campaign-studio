@@ -7,8 +7,13 @@ import {
 } from "../api/client";
 import { useAppDispatch, useAppState } from "../state/store";
 
+const CAMPAIGN_TYPES = [
+  { value: "launch", label: "Launch" },
+  { value: "social", label: "Social pack" },
+] as const;
+
 export function GoalInput() {
-  const { goal, upload, busy, job } = useAppState();
+  const { goal, campaignType, upload, busy, job } = useAppState();
   const dispatch = useAppDispatch();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -41,6 +46,7 @@ export function GoalInput() {
       const started = await startRun({
         inputImageRef: upload.id,
         goal: goal.trim(),
+        campaignType,
       });
       dispatch({ type: "SET_JOB", job: started });
       const final = await streamRun(started.id, (job) =>
@@ -98,6 +104,25 @@ export function GoalInput() {
         placeholder="Describe your campaign goal, e.g. “turn this into a launch campaign”"
         className="flex-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-500"
       />
+
+      <div className="flex overflow-hidden rounded-md border border-neutral-300">
+        {CAMPAIGN_TYPES.map((t) => (
+          <button
+            key={t.value}
+            onClick={() =>
+              dispatch({ type: "SET_CAMPAIGN_TYPE", campaignType: t.value })
+            }
+            disabled={busy || running}
+            className={`whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+              campaignType === t.value
+                ? "bg-neutral-900 text-white"
+                : "bg-white text-neutral-600 hover:bg-neutral-50"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       <button
         onClick={onRun}

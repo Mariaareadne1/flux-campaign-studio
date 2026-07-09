@@ -24,7 +24,12 @@ runRouter.post("/", (req, res) => {
   }
 
   try {
-    const job: Job = startCampaign(apiKey, body.inputImageRef, body.goal ?? "");
+    const job: Job = startCampaign(
+      apiKey,
+      body.inputImageRef,
+      body.goal ?? "",
+      body.campaignType,
+    );
     return res.json(job);
   } catch (err) {
     return res

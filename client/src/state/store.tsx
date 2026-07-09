@@ -6,16 +6,18 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import type { Job, UploadResponse } from "../../../shared/types";
+import type { CampaignType, Job, UploadResponse } from "../../../shared/types";
 
 /**
  * App state for a single campaign session: the uploaded product image, the
- * typed goal, and the current run (Job). The run's live step statuses live
- * inside `job.plan.steps` and are refreshed as the server executor progresses.
+ * typed goal, the chosen campaign type, and the current run (Job). The run's
+ * live step statuses live inside `job.plan.steps` and are refreshed as the
+ * server executor progresses.
  */
 export interface AppState {
   upload: UploadResponse | null;
   goal: string;
+  campaignType: CampaignType;
   job: Job | null;
   /** True while uploading or while a run is starting. */
   busy: boolean;
@@ -25,6 +27,7 @@ export interface AppState {
 const initialState: AppState = {
   upload: null,
   goal: "",
+  campaignType: "launch",
   job: null,
   busy: false,
   error: null,
@@ -33,6 +36,7 @@ const initialState: AppState = {
 export type Action =
   | { type: "SET_UPLOAD"; upload: UploadResponse | null }
   | { type: "SET_GOAL"; goal: string }
+  | { type: "SET_CAMPAIGN_TYPE"; campaignType: CampaignType }
   | { type: "SET_JOB"; job: Job | null }
   | { type: "SET_BUSY"; busy: boolean }
   | { type: "SET_ERROR"; error: string | null }
@@ -44,6 +48,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, upload: action.upload, job: null, error: null };
     case "SET_GOAL":
       return { ...state, goal: action.goal };
+    case "SET_CAMPAIGN_TYPE":
+      return { ...state, campaignType: action.campaignType };
     case "SET_JOB":
       return { ...state, job: action.job };
     case "SET_BUSY":

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   CampaignPlan,
+  CampaignType,
   FluxModelId,
   PlanStep,
   StepKind,
@@ -11,6 +12,7 @@ import {
   heroPrompt,
   lifestylePrompt,
   reframePrompt,
+  socialPrompt,
   type PromptContext,
 } from "./prompts";
 
@@ -93,58 +95,99 @@ function extractBrandColor(goal: string): string | undefined {
   return match ? match[0] : undefined;
 }
 
+/** Detect campaign type from the goal when the caller doesn't specify one. */
+function detectType(goal: string): CampaignType {
+  return /\b(social|instagram|tiktok|social pack|social media|reels?|stories)\b/i.test(
+    goal,
+  )
+    ? "social"
+    : "launch";
+}
+
+/** Pull a short headline out of the goal (quoted text), else a safe default. */
+function extractHeadline(goal: string): string {
+  const match = /["'“”‘’](.{1,40}?)["'“”‘’]/.exec(goal);
+  return match ? match[1].trim() : "NEW";
+}
+
+const CONTEXT = (goal: string): PromptContext => ({
+  style: deriveStyle(goal),
+  brandColor: extractBrandColor(goal),
+});
+
+const exportStep = (): PlanStep => ({
+  id: "export",
+  label: "Collect assets",
+  kind: "export",
+  model: "flux-2-pro",
+  status: "pending",
+  prompt: "Collect all generated campaign assets for export.",
+});
+
+function finalize(
+  goal: string,
+  uploadedImageId: string,
+  steps: PlanStep[],
+): CampaignPlan {
+  attachCostEstimates(steps);
+  return { id: randomUUID(), goal, inputImageRef: uploadedImageId, steps };
+}
+
 /**
- * Build a launch-campaign plan: concept draft -> hero -> lifestyle -> one
- * reframe per detected format -> export.
+ * The planner entry point. Routes to a workflow by campaign type (explicit, or
+ * detected from the goal). Adding a new campaign type = one new plan builder.
  */
 export function planCampaign(
   goal: string,
   uploadedImageId: string,
+  campaignType?: CampaignType,
 ): CampaignPlan {
-  const ctx: PromptContext = {
-    style: deriveStyle(goal),
-    brandColor: extractBrandColor(goal),
-  };
-  const formats = detectFormats(goal);
-  const steps: PlanStep[] = [];
+  const type = campaignType ?? detectType(goal);
+  return type === "social"
+    ? planSocialPack(goal, uploadedImageId)
+    : planLaunch(goal, uploadedImageId);
+}
 
-  steps.push({
-    id: "concept",
-    label: "Concept draft",
-    kind: "generate",
-    model: selectModel("generate", "concept"),
-    status: "pending",
-    inputImageRef: uploadedImageId,
-    width: 1024,
-    height: 1024,
-    prompt: conceptPrompt(ctx),
-  });
+/** Launch campaign: concept -> hero -> lifestyle -> one reframe per format. */
+function planLaunch(goal: string, uploadedImageId: string): CampaignPlan {
+  const ctx = CONTEXT(goal);
+  const steps: PlanStep[] = [
+    {
+      id: "concept",
+      label: "Concept draft",
+      kind: "generate",
+      model: selectModel("generate", "concept"),
+      status: "pending",
+      inputImageRef: uploadedImageId,
+      width: 1024,
+      height: 1024,
+      prompt: conceptPrompt(ctx),
+    },
+    {
+      id: "hero",
+      label: "Hero shot",
+      kind: "generate",
+      model: selectModel("generate", "hero"),
+      status: "pending",
+      inputImageRef: uploadedImageId,
+      width: 1024,
+      height: 1024,
+      prompt: heroPrompt(ctx),
+    },
+    {
+      id: "lifestyle",
+      label: "Lifestyle scene",
+      kind: "edit",
+      model: selectModel("edit", "other"),
+      status: "pending",
+      inputImageRef: "hero",
+      width: 1024,
+      height: 1024,
+      prompt: lifestylePrompt(ctx),
+    },
+  ];
 
-  steps.push({
-    id: "hero",
-    label: "Hero shot",
-    kind: "generate",
-    model: selectModel("generate", "hero"),
-    status: "pending",
-    inputImageRef: uploadedImageId,
-    width: 1024,
-    height: 1024,
-    prompt: heroPrompt(ctx),
-  });
-
-  steps.push({
-    id: "lifestyle",
-    label: "Lifestyle scene",
-    kind: "edit",
-    model: selectModel("edit", "other"),
-    status: "pending",
-    inputImageRef: "hero",
-    width: 1024,
-    height: 1024,
-    prompt: lifestylePrompt(ctx),
-  });
-
-  for (const format of formats) {
+  for (const format of detectFormats(goal)) {
     steps.push({
       id: `reframe-${format.key}`,
       label: format.label,
@@ -158,18 +201,48 @@ export function planCampaign(
     });
   }
 
-  steps.push({
-    id: "export",
-    label: "Collect assets",
-    kind: "export",
-    model: "flux-2-pro",
-    status: "pending",
-    prompt: "Collect all generated campaign assets for export.",
-  });
+  steps.push(exportStep());
+  return finalize(goal, uploadedImageId, steps);
+}
 
-  attachCostEstimates(steps);
+/**
+ * Social pack: a clean hero, then a square post, story, and banner — each with
+ * on-image typography rendered by flux-2-flex (its typography strength).
+ */
+function planSocialPack(goal: string, uploadedImageId: string): CampaignPlan {
+  const ctx = CONTEXT(goal);
+  const headline = extractHeadline(goal);
+  const steps: PlanStep[] = [
+    {
+      id: "hero",
+      label: "Hero shot",
+      kind: "generate",
+      model: selectModel("generate", "hero"),
+      status: "pending",
+      inputImageRef: uploadedImageId,
+      width: 1024,
+      height: 1024,
+      prompt: heroPrompt(ctx),
+    },
+  ];
 
-  return { id: randomUUID(), goal, inputImageRef: uploadedImageId, steps };
+  const SOCIAL_FORMATS = [FORMATS.square, FORMATS.story, FORMATS.banner];
+  for (const format of SOCIAL_FORMATS) {
+    steps.push({
+      id: `social-${format.key}`,
+      label: `${format.label} + text`,
+      kind: "edit",
+      model: "flux-2-flex", // best typography rendering
+      status: "pending",
+      inputImageRef: "hero",
+      width: format.width,
+      height: format.height,
+      prompt: socialPrompt(ctx, format.label, headline),
+    });
+  }
+
+  steps.push(exportStep());
+  return finalize(goal, uploadedImageId, steps);
 }
 
 /**

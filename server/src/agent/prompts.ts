@@ -65,6 +65,28 @@ export function lifestylePrompt(ctx: PromptContext): string {
   );
 }
 
+/**
+ * Social graphic with on-image typography (flux-2-flex). Follows the
+ * typography rules: quote the exact text, front-load it, name the font style,
+ * state placement + contrast, and keep the headline short (1–4 words).
+ */
+export function socialPrompt(
+  ctx: PromptContext,
+  formatLabel: string,
+  headline: string,
+): string {
+  const accent = ctx.brandColor
+    ? ` Use ${ctx.brandColor} (brand color) as an accent behind the text.`
+    : "";
+  return (
+    `A bold headline "${headline}" in clean geometric sans-serif, set in the ` +
+    `upper third of a ${formatLabel} social media graphic — large, high ` +
+    `contrast, and clearly legible. Feature the product from image 1 ` +
+    `prominently in the lower portion, with tasteful negative space around the ` +
+    `text. Style: ${ctx.style}.${accent} ${PRESERVE_PRODUCT}`
+  );
+}
+
 /** Reframe/outpaint an approved scene to a new aspect ratio. */
 export function reframePrompt(formatLabel: string): string {
   return (

@@ -1,5 +1,10 @@
 import { useRef, type ChangeEvent } from "react";
-import { fileToDataUrl, uploadImage } from "../api/client";
+import {
+  fileToDataUrl,
+  pollRun,
+  startRun,
+  uploadImage,
+} from "../api/client";
 import { useAppDispatch, useAppState } from "../state/store";
 
 export function GoalInput() {
@@ -28,8 +33,34 @@ export function GoalInput() {
     }
   }
 
-  // Run wiring lands in Task 4.
-  function onRun() {}
+  async function onRun() {
+    if (!upload || !goal.trim()) return;
+    dispatch({ type: "SET_ERROR", error: null });
+    dispatch({ type: "SET_BUSY", busy: true });
+    try {
+      const started = await startRun({
+        inputImageRef: upload.id,
+        goal: goal.trim(),
+      });
+      dispatch({ type: "SET_JOB", job: started });
+      const final = await pollRun(started.id, (job) =>
+        dispatch({ type: "SET_JOB", job }),
+      );
+      if (final.status === "failed") {
+        dispatch({
+          type: "SET_ERROR",
+          error: final.error ?? "Campaign failed.",
+        });
+      }
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      dispatch({ type: "SET_BUSY", busy: false });
+    }
+  }
 
   const running = job?.status === "running";
   const canRun = !!upload && goal.trim().length > 0 && !busy && !running;

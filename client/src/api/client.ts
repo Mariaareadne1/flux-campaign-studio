@@ -3,6 +3,8 @@ import type {
   FluxStatus,
   GenerateRequest,
   GenerateResponse,
+  Job,
+  RunRequest,
   StatusResponse,
   UploadResponse,
 } from "../../../shared/types";
@@ -67,6 +69,43 @@ export async function uploadImage(dataUrl: string): Promise<UploadResponse> {
     body: JSON.stringify({ dataUrl }),
   });
   return jsonOrThrow<UploadResponse>(resp);
+}
+
+/** Start a campaign run for an uploaded image; returns the initial Job. */
+export async function startRun(req: RunRequest): Promise<Job> {
+  const resp = await fetch("/api/run", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return jsonOrThrow<Job>(resp);
+}
+
+/** Fetch the current state of a run. */
+export async function getRun(runId: string): Promise<Job> {
+  const resp = await fetch(`/api/run/${encodeURIComponent(runId)}`);
+  return jsonOrThrow<Job>(resp);
+}
+
+const RUN_POLL_INTERVAL_MS = 800;
+const MAX_RUN_POLLS = 900; // ~12 minutes
+
+/**
+ * Poll a run every ~0.8s, reporting each snapshot, until it's no longer
+ * running. This drives the live PlanPanel/Canvas updates in Phase 1; Phase 2
+ * replaces it with a Server-Sent Events stream.
+ */
+export async function pollRun(
+  runId: string,
+  onUpdate: (job: Job) => void,
+): Promise<Job> {
+  for (let i = 0; i < MAX_RUN_POLLS; i++) {
+    const job = await getRun(runId);
+    onUpdate(job);
+    if (job.status !== "running") return job;
+    await new Promise((r) => setTimeout(r, RUN_POLL_INTERVAL_MS));
+  }
+  throw new Error("Run timed out.");
 }
 
 const POLL_INTERVAL_MS = 700;

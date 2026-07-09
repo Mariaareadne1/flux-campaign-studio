@@ -14,6 +14,7 @@ import { generateRouter } from "./routes/generate";
 import { statusRouter } from "./routes/status";
 import { imageRouter } from "./routes/image";
 import { uploadRouter } from "./routes/upload";
+import { runRouter } from "./routes/run";
 import { ensureUploadsDir, UPLOADS_DIR } from "./storage";
 
 const app = express();
@@ -32,6 +33,7 @@ app.use("/api/generate", generateRouter); // POST -> FLUX submit
 app.use("/api/status", statusRouter); // GET  -> FLUX polling
 app.use("/api/image", imageRouter); // GET  -> proxy-download a result URL
 app.use("/api/upload", uploadRouter); // POST -> store a product image
+app.use("/api/run", runRouter); // POST -> start a campaign; GET /:id -> progress
 
 // Serve stored images (uploads + persisted results). express.static guards
 // against path traversal.
